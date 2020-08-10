@@ -202,7 +202,7 @@ catch_sigint(int signo)
 }
 
 static void
-create_full_path()
+create_full_path(void)
 {
 	static char buf[4096];
 	int i, j, k;
