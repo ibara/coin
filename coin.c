@@ -229,21 +229,13 @@ create_full_path(void)
 static void
 dputi(int n, int fd)
 {
-	char num[10];
-	int i, neg = 0;
-
-	if (n < 0) {
-		neg = 1;
-		n = -n;
-	}
+	char num[4];
+	int i;
 
 	i = 0;
 	do {
 		num[i++] = n %10 + '0';
 	} while ((n /= 10) > 0);
-
-	if (neg == 1)
-		write(fd, "-", 1);
 
 	for (i--; i >= 0; i--)
 		write(fd, &num[i], 1);
