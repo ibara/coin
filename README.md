@@ -1,10 +1,11 @@
 coin
 ====
 coin is a command interpreter for Unix.
-It is a static binary under 3 KB (2289 bytes).
+It is a static binary under 3 KB (2829 bytes).
 
-It can be used as a basic interactive shell,
-but it has no scripting support.
+It can be used as a basic interactive shell, and can read scripts
+containing command executions, but has no scripting language
+support.
 
 It is for learning about how commands are issued from the shell.
 

@@ -109,6 +109,20 @@ write(int d, const void *buf, unsigned long nbytes)
 	_syscall((void *) 4, (void *) d, (void *) buf, (void *) nbytes, NULL, NULL);
 }
 
+static int
+open(const char *path, int flags)
+{
+
+	return (int) _syscall((void *) 5, (void *) path, (void *) flags, NULL, NULL, NULL);
+}
+
+static int
+close(int d)
+{
+
+	return (int) _syscall((void *) 6, (void *) d, NULL, NULL, NULL, NULL);
+}
+
 static long
 wait4(int wpid, int *status, int options, void *rusage)
 {
@@ -201,14 +215,14 @@ catch_sigint(int signo)
 	caught_sigint = 1;
 }
 
-static void
+static int
 create_full_path(void)
 {
 	static char buf[4096];
 	int i, j, k;
 
 	if (access(com[0], 0x01) == 0)
-		return;
+		return 1;
 
 	for (i = 0; path[i] != NULL; i++) {
 		k = 0;
@@ -221,9 +235,11 @@ create_full_path(void)
 
 		if (access(buf, 0x01) == 0) {
 			com[0] = buf;
-			break;
+			return 1;
 		}
 	}
+
+	return 0;
 }
 
 static void
@@ -369,6 +385,17 @@ cd:
 		return 1;
 	} else if (!strcmp(com[0], "echo")) {
 echo:
+		if (com[1] == NULL) {
+			dputs("\n", 1);
+
+			previous[0] = "echo";
+			previous[1] = NULL;
+
+			ret = 0;
+
+			return 1;
+		}
+
 		if (!strcmp(com[1], "$?") && com[2] == NULL) {
 			dputi(ret, 1);
 			dputs("\n", 1);
@@ -380,9 +407,23 @@ echo:
 			ret = 0;
 
 			return 1;
+		} else {
+			previous[0] = "echo";
+
+			for (i = 1; com[i] != NULL; i++) {
+				dputs(com[i], 1);
+				previous[i] = com[i];
+				if (com[i + 1] != NULL)
+					dputs(" ", 1);
+			}
+			dputs("\n", 1);
+
+			ret = 0;
+
+			return 1;
 		}
-	} else if (!strcmp(com[0], "!!")) {
-		if (previous[0] == NULL)
+	} else if (!strcmp(com[0], "!!") && com[1] == NULL) {
+		if (previous[0] == NULL || !strcmp(previous[0], "!!"))
 			return 1;
 		for (i = 0; previous[i] != NULL; i++)
 			com[i] = previous[i];
@@ -425,9 +466,82 @@ coin(void)
 	if (builtin() == 1)
 		return;
 
-	create_full_path();
+	if (create_full_path() == 0) {
+		dputs("coin: error: could not execute ", 2);
+		dputs(com[0], 2);
+		dputs("\n", 2);
+
+		ret = 127;
+
+		return;
+	}
 
 	ret = execute();
+}
+
+static int
+interpret(const char *script)
+{
+	char buf[4096];
+	int c, fd, i;
+
+	if ((fd = open(script, 0x0000)) == -1) {
+		dputs("coin: error: could not open ", 2);
+		dputs(script, 2);
+		dputs("\n", 2);
+
+		return 1;
+	}
+
+line:
+	for (i = 0; i < sizeof(buf); i++)
+		buf[i] = '\0';
+
+	for (i = 0; i < sizeof(buf) - 1; i++) {
+		if (read(fd, &c, 1) < 1)
+			goto done;
+
+		if (c == '\n')
+			break;
+
+		buf[i] = c;
+	}
+
+	if (buf[0] == '#' && buf[1] == '!')
+		goto line;
+
+	if (i == 0)
+		goto line;
+
+	tokenify(buf, i);
+
+	if (builtin() == 1)
+		goto line;
+
+	if (create_full_path() == 0) {
+		dputs("coin: error: could not execute ", 2);
+		dputs(com[0], 2);
+		dputs("\n", 2);
+
+		ret = 127;
+
+		goto line;
+	}
+
+	ret = execute();
+
+	goto line;
+
+done:
+	if (close(fd) == -1) {
+		dputs("coin: error: could not close ", 2);
+		dputs(script, 2);
+		dputs("\n", 2);
+
+		_exit(1);
+	}
+
+	return 0;
 }
 
 int
@@ -435,7 +549,13 @@ main(int argc, char *argv[])
 {
 	int i;
 
-	(void) argc, (void) argv;
+	if (argc > 2) {
+		dputs("usage: coin [file]\n", 2);
+		return 1;
+	}
+
+	if (argc == 2)
+		return interpret(argv[1]);
 
 	set_handler(catch_sigint);
 
